@@ -7,7 +7,7 @@ FRAMES = 600
 OUTPUT_PATH = 'data.txt'
 MAX_V = 1
 dt = 0.01
-epsilon = -0.5
+epsilon = -0.2
 sensitivity = 0
 mu = 1 #0.99
 
@@ -22,8 +22,8 @@ polygon = np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0]])
 #polygon = np.array([[0.272975432211101, 0.5632393084622384, 0.4940855323020928, 0.17834394904458598], [0.4940855323020928, 0.17834394904458598, 1.0, 0.4367606915377616], [1.0, 0.4367606915377616, 0.727024567788899, 0.6560509554140127], [0.727024567788899, 0.6560509554140127, 0.272975432211101, 0.5632393084622384]])
 #polygon = np.array([[0.6682832201745877, 0.1367604267701261, 0.7604267701260912, 0.14936954413191075], [0.7604267701260912, 0.14936954413191075, 0.8486905916585838, 0.18622696411251213], [0.8486905916585838, 0.18622696411251213, 0.9204655674102813, 0.24442289039767218], [0.9204655674102813, 0.24442289039767218, 0.9689621726479146, 0.30358874878758485], [0.9689621726479146, 0.30358874878758485, 0.991270611057226, 0.3792434529582929], [0.991270611057226, 0.3792434529582929, 1.0, 0.45295829291949563], [1.0, 0.45295829291949563, 0.9873908826382153, 0.5363724539282251], [0.9873908826382153, 0.5363724539282251, 0.95635305528613, 0.6071774975751697], [0.95635305528613, 0.6071774975751697, 0.9078564500484966, 0.6595538312318138], [0.9078564500484966, 0.6595538312318138, 0.8428709990300679, 0.7061105722599418], [0.8428709990300679, 0.7061105722599418, 0.7749757516973812, 0.7342386032977691], [0.597478176527643, 0.7400581959262852, 0.5198836081474297, 0.7187196896217265], [0.5198836081474297, 0.7187196896217265, 0.43161978661493694, 0.6624636275460718], [0.43161978661493694, 0.6624636275460718, 0.3831231813773036, 0.5868089233753637], [0.3831231813773036, 0.5868089233753637, 0.35984481086323955, 0.49369544131910764], [0.35984481086323955, 0.49369544131910764, 0.3646944713870029, 0.3957322987390883], [0.3646944713870029, 0.3957322987390883, 0.38700290979631424, 0.3181377303588749], [0.38700290979631424, 0.3181377303588749, 0.4190106692531523, 0.25897187196896215], [0.4190106692531523, 0.25897187196896215, 0.4801163918525703, 0.1959262851600388], [0.4801163918525703, 0.1959262851600388, 0.5577109602327837, 0.15324927255092144], [0.5577109602327837, 0.15324927255092144, 0.6682832201745877, 0.1367604267701261], [0.7749757516973812, 0.7342386032977691, 0.6944713870029098, 0.7478176527643065], [0.6944713870029098, 0.7478176527643065, 0.597478176527643, 0.7400581959262852]])
 
-all_radius = [random.uniform(1, 1) for _ in range(NUM_BALLS)]
-
+radii = np.full(NUM_BALLS, 1/20)#[random.uniform(1, 1) for _ in range(NUM_BALLS)]
+radii_sq = radii * radii
 As = polygon[:, 1] - polygon[:, 3]
 Bs = polygon[:, 2] - polygon[:, 0]
 normals = np.array(list(zip(As, Bs)), np.float64)
@@ -39,10 +39,10 @@ upper = np.max(np.dstack((polygon[:, 1], polygon[:, 3])), 2)[0]
 BOUNDS = np.min(polygon[:, ::2]), np.max(polygon[:, ::2]), np.min(polygon[:, 1::2]), np.max(polygon[:, 1::2])
 SIZE = BOUNDS[1] - BOUNDS[0], BOUNDS[3] - BOUNDS[2]
 # Variables
-#x = np.array([[0.2, 0.5]])
+#x = np.array([[0.2, 0], [1.7, 0.05]])
 x = np.array([np.random.uniform(BOUNDS[0] - SIZE[0] * epsilon, BOUNDS[1] + SIZE[0] * epsilon, NUM_BALLS), np.random.uniform(BOUNDS[2] - SIZE[1] * epsilon, BOUNDS[3] + SIZE[1] * epsilon, NUM_BALLS)], np.float64).T
 xprev = x.copy()
-#v = np.array([[0, 2]])#
+#v = np.array([[1, 0.01], [-1, 0]])#
 v = np.random.standard_normal((NUM_BALLS, 2)) * MAX_V
 file = open(OUTPUT_PATH, 'w')
 for side in polygon:
@@ -50,6 +50,8 @@ for side in polygon:
 file.write("\n")
 
 
+def magnitude_sq(vec):
+    return vec[0] * vec[0] + vec[1] * vec[1]
 for i in range(FRAMES):
     x += v * dt
     v *= mu
@@ -73,7 +75,24 @@ for i in range(FRAMES):
     x[num_intersections % 2 == 0] = xprev[num_intersections % 2 == 0]
     v[num_intersections % 2 == 0] = new_v[num_intersections % 2 == 0]
     for i in range(NUM_BALLS):
-        file.write(f"{(x[i][0] - BOUNDS[0])/SIZE[0]} {(x[i][1] - BOUNDS[2])/SIZE[1]} {v[i][0]} {v[i][1]} {all_radius[i]} ")
+        for j in range(i+1, NUM_BALLS):
+            dx = x[i][0] - x[j][0]
+            dy = x[i][1] - x[j][1]
+            normal = np.array([dx, dy])
+            if magnitude_sq(normal) < (radii_sq[i] + radii_sq[j]):
+                #find the average of centers
+                average = np.array([(x[i][0] + x[j][0])/2, (x[i][1] + x[j][1])/2])
+                #move each ball so that it no longer intersects
+                normal = np.array([dx, dy])
+                x[i] += normal * (radii_sq[i] + radii_sq[j] - magnitude_sq(normal))/2
+                x[j] -= normal * (radii_sq[i] + radii_sq[j] - magnitude_sq(normal))/2
+                #get component in normal direction
+                towards_i = np.dot(v[i], normal)
+                v[i] -= 2*towards_i * normal / magnitude_sq(normal)
+                towards_j = np.dot(v[j], normal)
+                v[j] -= 2*towards_j * normal / magnitude_sq(normal)
+    for i in range(NUM_BALLS):
+        file.write(f"{(x[i][0] - BOUNDS[0])/SIZE[0]} {(x[i][1] - BOUNDS[2])/SIZE[1]} {v[i][0]} {v[i][1]} {radii[i]*30} ")
     file.write("\n")
 
 file.close()

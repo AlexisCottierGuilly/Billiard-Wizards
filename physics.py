@@ -1,8 +1,8 @@
 import numpy as np
 
 # Constants
-NUM_BALLS = 10
-FRAMES = 6000
+NUM_BALLS = 200
+FRAMES = 600
 OUTPUT_PATH = 'data.txt'
 MAX_V = 1
 dt = 0.01
@@ -58,6 +58,7 @@ for i in range(FRAMES):
             closest[improved] = proximity_to_line[improved]
     xprev = x.copy()
     new_v = v - 2*(v[:, 0] * normals[:, 0][nearest_side] + v[:, 1] * normals[:, 1][nearest_side])[:, None] * normals[nearest_side]
+    x[num_intersections % 2 == 0] = xprev[num_intersections % 2 == 0]
     v[num_intersections % 2 == 0] = new_v[num_intersections % 2 == 0]
     for i in range(NUM_BALLS):
         file.write(f"{(x[i][0] - BOUNDS[0])/SIZE[0]} {(x[i][1] - BOUNDS[2])/SIZE[1]} {v[i][0]} {v[i][1]} {1} ")

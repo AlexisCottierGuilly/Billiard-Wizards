@@ -105,7 +105,7 @@ def update_trail_items(items, x, y, vx, vy, r, color):
     angle = np.arctan2(vy, vx)
 
     arrow_length = 2 * np.sqrt(vx**2 + vy**2) * (BOARD_SIZE[0] / 35) * r + r
-    end = x - (arrow_length / 2) * np.cos(angle), y - (arrow_length / 2) * np.sin(angle)
+    end = x + (arrow_length / 2) * np.cos(angle), y + (arrow_length / 2) * np.sin(angle)
 
     for item in items:
         if isinstance(item, patches.Arrow):
@@ -172,6 +172,9 @@ def animate(i):
     frame1_index = i // SUB_FRAMES
     frame2_index = (i // SUB_FRAMES + 1) % len(frames)
     percentage = (i % SUB_FRAMES) / SUB_FRAMES
+
+    if frame2_index < frame1_index:
+        percentage = 1
 
     update(frames[frame1_index], frames[frame2_index], percentage)
 

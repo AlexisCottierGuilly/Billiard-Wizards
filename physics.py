@@ -1,12 +1,12 @@
 import numpy as np
 
 # Constants
-NUM_BALLS = 1
-FRAMES = 600
+NUM_BALLS = 10
+FRAMES = 6000
 OUTPUT_PATH = 'data.txt'
 MAX_V = 1
-dt = 0.001
-epsilon = -0.1
+dt = 0.01
+epsilon = -0.5
 sensitivity = 0
 
 # Bounds

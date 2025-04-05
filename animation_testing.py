@@ -9,6 +9,7 @@ import matplotlib.font_manager as fm
 
 from matplotlib.widgets import Button
 
+import networkx as nx
 
 fe = fm.FontEntry(
     fname='Spinnaker-Regular.ttf',
@@ -18,7 +19,7 @@ mpl.rcParams['font.family'] = fe.name
 
 BOARD_SIZE = (100, 100)
 
-SUB_FRAMES = 6
+SUB_FRAMES = 1
 ANIMATION_SPEED = 1
 PAUSE_BUTTON_PATH = "icons/pause.png"
 PLAY_BUTTON_PATH = "icons/play.png"
@@ -173,7 +174,7 @@ def get_board_elements(board_vertices, size=(100, 100)):
         vertices = [v[0] for v in polygon]
         scaled_vertices = [((v[0] + offset_x) * scale_x, (v[1] + offset_y) * scale_y) for v in vertices]
 
-        polygon_patch = plt.Polygon(scaled_vertices, closed=True, edgecolor='saddlebrown', facecolor='darkgreen', alpha=0.5)
+        polygon_patch = plt.Polygon(scaled_vertices, closed=True, edgecolor='#4d3615', facecolor='#264d15', alpha=1)
         polygon_patch.set_linewidth(5)
         polygon_patches.append(polygon_patch)
     
@@ -458,3 +459,5 @@ fig.canvas.mpl_connect('button_release_event', on_mouse_release)
 fig.canvas.mpl_connect('motion_notify_event', on_mouse_drag)
 
 plt.show()
+
+# polygon = np.array([[0.2375, 0.12333333333333334, 0.08916666666666667, 0.3616666666666667], [0.08916666666666667, 0.3616666666666667, 0.405, 0.37166666666666665], [0.405, 0.37166666666666665, 0.37916666666666665, 0.5966666666666667], [0.37916666666666665, 0.5966666666666667, 0.7958333333333333, 0.5783333333333334], [0.7958333333333333, 0.5783333333333334, 0.82, 0.5183333333333333], [0.82, 0.5183333333333333, 0.7675, 0.37916666666666665], [0.7675, 0.37916666666666665, 1.0, 0.185], [1.0, 0.185, 0.8975, 0.11333333333333333], [0.8975, 0.11333333333333333, 0.7233333333333334, 0.11666666666666667], [0.7233333333333334, 0.11666666666666667, 0.5866666666666667, 0.04083333333333333], [0.5866666666666667, 0.04083333333333333, 0.30416666666666664, 0.059166666666666666], [0.30416666666666664, 0.059166666666666666, 0.2375, 0.12333333333333334]])

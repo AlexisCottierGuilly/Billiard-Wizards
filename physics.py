@@ -8,11 +8,12 @@ MAX_V = 1
 dt = 0.01
 epsilon = -0.5
 sensitivity = 0
+mu = 0.99
 
 # Bounds
 #polygon = np.array([[0, 0, 1, 0], [1, 0, 1, 1], [1, 1, 0, 1], [0, 1, 0, 0]])
-polygon = np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0], [0.75, 0.25, 1.25, 0.25], [1.25, 0.25, 1.25, -0.25], [1.25, -0.25, 0.75, -0.25], [0.75, -0.25, 0.75, 0.25], [0.9, 0.1, 1.1, 0.2], [1.1, 0.2, 1.1, 0], [1.1, 0, 1, -0.14], [1, -0.14, 0.8, -0.1], [0.8, -0.1, 0.9, 0.1]]) #list of sides, where each side is two points
-#polygon = np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0]])
+#polygon = np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0], [0.75, 0.25, 1.25, 0.25], [1.25, 0.25, 1.25, -0.25], [1.25, -0.25, 0.75, -0.25], [0.75, -0.25, 0.75, 0.25], [0.9, 0.1, 1.1, 0.2], [1.1, 0.2, 1.1, 0], [1.1, 0, 1, -0.14], [1, -0.14, 0.8, -0.1], [0.8, -0.1, 0.9, 0.1]]) #list of sides, where each side is two points
+polygon = np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0]])
 As = polygon[:, 1] - polygon[:, 3]
 Bs = polygon[:, 2] - polygon[:, 0]
 normals = np.array(list(zip(As, Bs)), np.float64)
@@ -41,6 +42,7 @@ file.write("\n")
 
 for i in range(FRAMES):
     x += v * dt
+    v *= mu
     num_intersections = np.zeros(NUM_BALLS, np.int32)
     nearest_side = np.zeros(NUM_BALLS, np.int32)
     closest = np.zeros(NUM_BALLS, np.float64)

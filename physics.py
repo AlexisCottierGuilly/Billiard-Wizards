@@ -1,7 +1,7 @@
 import numpy as np
 
 # Constants
-NUM_BALLS = 3
+NUM_BALLS = 2
 FRAMES = 5
 OUTPUT_PATH = 'data.txt'
 MAX_V = 2
@@ -9,7 +9,8 @@ dt = 0.1
 
 
 # Bounds
-polygon =  np.array([[0, 0, 1, 0], [1, 0, 0, 1.5], [0, 1.5, 0, 0]])#np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0], [0.75, 0.25, 1.25, 0.25], [1.25, 0.25, 1.25, -0.25], [1.25, -0.25, 0.75, -0.25], [0.75, -0.25, 0.75, 0.25], [0.9, 0.1, 1.1, 0.2], [1.1, 0.2, 1.1, 0], [1.1, 0, 1, -0.14], [1, -0.14, 0.8, -0.1], [0.8, -0.1, 0.9, 0.1]]) #list of sides, where each side is two points
+# np.array([[0, 0, 1, 0], [1, 0, 0, 1.5], [0, 1.5, 0, 0]])
+polygon = np.array([[0, 0, 1, 1], [1, 1, 2, 0], [2, 0, 1, -1], [1, -1, 0, 0], [0.75, 0.25, 1.25, 0.25], [1.25, 0.25, 1.25, -0.25], [1.25, -0.25, 0.75, -0.25], [0.75, -0.25, 0.75, 0.25], [0.9, 0.1, 1.1, 0.2], [1.1, 0.2, 1.1, 0], [1.1, 0, 1, -0.14], [1, -0.14, 0.8, -0.1], [0.8, -0.1, 0.9, 0.1]]) #list of sides, where each side is two points
 is_infinite = polygon[:, 0] == polygon[:, 2]
 is_zero = polygon[:, 1] == polygon[:, 3]
 slopes = (polygon[:, 1] - polygon[:, 3]) / (polygon[:, 0] - polygon[:, 2] + is_infinite)
@@ -27,17 +28,17 @@ BOUNDS = np.min(polygon[:, ::2]), np.max(polygon[:, ::2]), np.min(polygon[:, 1::
 # Variables
 x = np.array([np.random.uniform(BOUNDS[0] - (BOUNDS[1]-BOUNDS[0])/10, BOUNDS[1] + (BOUNDS[1]-BOUNDS[0])/10, NUM_BALLS), np.random.uniform(BOUNDS[2] - (BOUNDS[3]-BOUNDS[2])/10, BOUNDS[3] + (BOUNDS[3]-BOUNDS[2])/10, NUM_BALLS)], np.float64).T
 v = np.random.standard_normal((NUM_BALLS, 2)) * MAX_V
-indices = np.arange(NUM_BALLS)
+print(v)
 
 file = open(OUTPUT_PATH, 'w')
 for side in polygon:
-    file.write(f"{side[0]} {side[1]} {side[2]} {side[3]}")
+    file.write(f"{side[0]} {side[1]} {side[2]} {side[3]} ")
 file.write("\n")
 
 for i in range(FRAMES):
     print(x)
     for i in range(NUM_BALLS):
-        file.write(f"{x[i][0]} {x[i][1]} {v[i][0]} {v[i][1]} ")
+        file.write(f"{x[i][0]} {x[i][1]} {v[i][0]} {v[i][1]} 1 ")
     file.write("\n")
     x += v * dt
     # find balls outside polygon
@@ -59,6 +60,6 @@ for i in range(FRAMES):
     actual_normals = normals[last_isect]
     outside = num_intersections % 2 == 0
     a = (2*(v[:, 0] * actual_normals[:, 0] + v[:, 1] * actual_normals[:, 1]))
-    v = outside[:, None] * ((v - a[:, None]) * actual_normals) + (1 - outside)[:, None]*v
+    #v = outside[:, None] * ((v - a[:, None]) * actual_normals) + (1 - outside)[:, None]*v
 
 file.close()

@@ -9,6 +9,7 @@ import matplotlib.font_manager as fm
 
 from matplotlib.widgets import Button
 
+import networkx as nx
 
 fe = fm.FontEntry(
     fname='Spinnaker-Regular.ttf',
@@ -142,7 +143,20 @@ def update_trail_items(items, x, y, vx, vy, r, color):
             item.set_color(color)
 
 
-def get_board(board_vertices, size=(100, 100)):
+def get_board_elements(board_vertices, size=(100, 100)):
+    polygons = []
+    remaining_vertices = [[board_vertices[2 * i], board_vertices[2 * i+1]] for i in range(round(len(board_vertices) / 2))]
+    i = 0
+    while len(remaining_vertices) > 0:
+        vertex = remaining_vertices[0]
+        polygon, remaining_vertices = get_polygon_with_vertex(vertex, remaining_vertices)
+        polygons.append(polygon)
+
+        i += 1
+        if i > 100:
+            print("Too many iterations")
+            break
+    
     min_x = min([v[0] for v in board_vertices])
     max_x = max([v[0] for v in board_vertices])
     min_y = min([v[1] for v in board_vertices])
@@ -153,13 +167,47 @@ def get_board(board_vertices, size=(100, 100)):
     min_x, max_x, min_y, max_y = min_x + offset_x, max_x + offset_x, min_y + offset_y, max_y + offset_y
     scale_x = size[0] / (max_x - min_x)
     scale_y = size[1] / (max_y - min_y)
-    scale_multiplier = (scale_x, scale_y)
+
+    # Create the polygons
+    polygon_patches = []
+    for polygon in polygons:
+        vertices = [v[0] for v in polygon]
+        scaled_vertices = [((v[0] + offset_x) * scale_x, (v[1] + offset_y) * scale_y) for v in vertices]
+
+        polygon_patch = plt.Polygon(scaled_vertices, closed=True, edgecolor='saddlebrown', facecolor='darkgreen', alpha=0.5)
+        polygon_patch.set_linewidth(5)
+        polygon_patches.append(polygon_patch)
     
-    scaled_vertices = [((v[0] + offset_x) * scale_x, (v[1] + offset_y) * scale_y) for v in board_vertices]
+    return polygon_patches
+
+
+def get_polygon_with_vertex(vertex, remaining_vertices):
+    new_remaining_vertices = remaining_vertices
+    polygon = [vertex]
+    current_vertex = vertex
+    remaining_vertices.remove(vertex)
+
+    i = 0
+    while True:
+        found_next = False
+        returns_to_start = False
+        for vertex in remaining_vertices:
+            if vertex[0] == current_vertex[1]:
+                if vertex[1] == polygon[0][0]:
+                    returns_to_start = True
+                polygon.append(vertex)
+                current_vertex = vertex
+                new_remaining_vertices.remove(vertex)
+                found_next = True
+                break
+        if not found_next or returns_to_start:
+            break
+
+        i += 1
+        if i > 100:
+            break
     
-    polygon = plt.Polygon(scaled_vertices, closed=True, edgecolor='saddlebrown', facecolor='darkgreen', alpha=0.5)
-    polygon.set_linewidth(5)
-    return polygon
+    return polygon, new_remaining_vertices
 
 
 def update(frame1, frame2, percentage):
@@ -373,15 +421,16 @@ ax.spines['right'].set_visible(False)
 ax.spines['left'].set_visible(False)
 ax.spines['bottom'].set_visible(False)
 
-board = get_board(board_vertices, size=BOARD_SIZE)
-ax.add_patch(board)
+board_elements = get_board_elements(board_vertices, size=BOARD_SIZE)
+for elem in board_elements:
+    ax.add_patch(elem)
 
 # Create an axis for the image button in center of the figure (bottom)
 button_ax = fig.add_axes([0.475, 0.02, 0.075, 0.075], frameon=False)
 pause_button = Button(button_ax, '', color='black', hovercolor='gray')  # empty label
 
 # Load the image
-button_ax.imshow(pause_img)
+button_ax.imshow(pause_img, alpha=0.5)
 button_ax.axis('off')  # Hide ticks and axes for a clean look
 pause_button.on_clicked(toggle_animation)
 

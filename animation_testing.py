@@ -9,6 +9,8 @@ import matplotlib.font_manager as fm
 
 from matplotlib.widgets import Button
 
+import networkx as nx
+
 fe = fm.FontEntry(
     fname='Spinnaker-Regular.ttf',
     name='Spinnaker')
@@ -17,7 +19,7 @@ mpl.rcParams['font.family'] = fe.name
 
 BOARD_SIZE = (100, 100)
 
-SUB_FRAMES = 60
+SUB_FRAMES = 6
 ANIMATION_SPEED = 1
 PAUSE_BUTTON_PATH = "icons/pause.png"
 PLAY_BUTTON_PATH = "icons/play.png"
@@ -29,6 +31,12 @@ need_to_pause = False
 need_to_play = False
 
 click_start = None
+last_click = None
+
+shift_pressed = False
+
+# Data
+centers_of_mass = []
 
 
 class Ball(plt.Circle):
@@ -36,9 +44,22 @@ class Ball(plt.Circle):
         super().__init__(*args, **kwargs)
         self.trail_items = []
         self.selected = False
+        self.dragged = False
 
         self.dx = 0
         self.dy = 0
+
+        self.x = 0
+        self.y = 0
+    
+    def drag(self):
+        self.dragged = True
+        self.set_edgecolor('blue')
+        self.set_linewidth(2)
+    def undrag(self):
+        self.dragged = False
+        self.set_edgecolor('black')
+        self.set_linewidth(0)
     
     def select(self):
         self.selected = True
@@ -48,6 +69,14 @@ class Ball(plt.Circle):
         self.selected = False
         self.set_edgecolor('black')
         self.set_linewidth(0)
+    
+    def move(self, dx, dy):
+        current_x, current_y = self.get_center()
+        new_x = current_x + dx
+        new_y = current_y + dy
+        self.set_center((new_x, new_y))
+        self.x = new_x / BOARD_SIZE[0]
+        self.y = new_y / BOARD_SIZE[1]
 
 
 def read_data(file_path):
@@ -156,6 +185,7 @@ def update(frame1, frame2, percentage):
         ball.set_color(color)
 
         ball.vx, ball.vy = vx, vy
+        ball.x, ball.y = x, y
 
         if ball.selected:
             ball.select()
@@ -167,8 +197,20 @@ def update(frame1, frame2, percentage):
     return ball_patches
 
 
+def calculate_centers_of_mass(frames):
+    global centers_of_mass
+    centers_of_mass = []
+    for frame in frames:
+        x_sum = 0
+        y_sum = 0
+        for ball in frame:
+            x_sum += ball[0]
+            y_sum += ball[1]
+        centers_of_mass.append((x_sum / len(frame), y_sum / len(frame)))
+
+
 def animate(i):
-    global need_to_pause, need_to_play
+    global need_to_pause, need_to_play, centers_of_mass
     frame1_index = i // SUB_FRAMES
     frame2_index = (i // SUB_FRAMES + 1) % len(frames)
     percentage = (i % SUB_FRAMES) / SUB_FRAMES
@@ -194,9 +236,9 @@ def process_force_modification(ball, mouse_pos):
     dx = mx - x
     dy = my - y
 
-    multiplier = 0.05
+    multiplier = 0.1
 
-    angle = np.arctan2(dy, dx)
+    angle = np.arctan2(-dy, -dx)
     distance = np.sqrt(dx**2 + dy**2)
 
     ball.vx = np.cos(angle) * distance * multiplier
@@ -216,35 +258,64 @@ def on_press(event):
     if event.key == ' ':  # la barre d'espace pour la pause/reprise
         toggle_animation(event)
     if event.key == 'r':
-        for ball in balls:
-            if ball.selected:
-                ball.unselect()
-            else:
-                ball.select()
-        fig.canvas.draw()
+        reset_animation()
+    if event.key == 'shift':
+        global shift_pressed
+        shift_pressed = True
+
+def on_release(event):
+    global shift_pressed
+    if event.key == 'shift':
+        shift_pressed = False
 
 
 def on_mouse_press(event):
-    global click_start
+    global click_start, last_click
     if event.inaxes:
         click_start = (event.xdata, event.ydata)
+        last_click = click_start
+        
+        for ball in balls:
+            # try if the click is in the ball's circle
+            radius = ball.get_radius()
+            x, y = ball.get_center()
+            if (event.xdata - x)**2 + (event.ydata - y)**2 <= radius**2:
+                if shift_pressed:
+                    ball.select()
+                else:
+                    ball.drag()
+        
+        fig.canvas.draw()
 
 
 def on_mouse_release(event):
-    global click_start
+    global click_start, last_click
     click_start = None
+    last_click = None
+
+    for ball in balls:
+        ball.unselect()
+        ball.undrag()
+    fig.canvas.draw()
 
 
 def on_mouse_drag(event):
+    global click_start, last_click
     if click_start is not None and event.inaxes:
         did_find_selected_ball = False
         for ball in balls:
-            if ball.selected:
+            if ball.selected or (ball.dragged and last_click is not None):
                 did_find_selected_ball = True
-                process_force_modification(ball, (event.xdata, event.ydata))
-                update_trail_items(ball.trail_items, ball.get_center()[0], ball.get_center()[1], ball.vx, ball.vy, ball.get_radius(), ball.get_facecolor())
+                if ball.selected:
+                    process_force_modification(ball, (event.xdata, event.ydata))
+                elif ball.dragged:
+                    dx, dy = event.xdata - last_click[0], event.ydata - last_click[1]
+                    ball.move(dx, dy)
+                update_trail_items(ball.trail_items, ball.x, ball.y, ball.vx, ball.vy, ball.get_radius(), ball.get_facecolor())
         if did_find_selected_ball:
             fig.canvas.draw()
+    
+        last_click = (event.xdata, event.ydata)
 
 
 def toggle_animation(event):
@@ -262,6 +333,18 @@ def toggle_animation(event):
     is_paused = not is_paused
 
 
+def start_animation(figure, anim_function, nb_frames, interval, blit=False):
+    global ani
+    ani = animation.FuncAnimation(figure, anim_function, frames=nb_frames, interval=interval, blit=blit)
+    ani.event_source.start()
+
+
+def reset_animation():
+    global ani
+    ani.event_source.stop()
+    start_animation(fig, animate, number_of_frames, interval, blit=False)
+
+
 balls = []
 ball_colors = []
 
@@ -272,11 +355,12 @@ num_balls = len(frames[0])
 for i in range(num_balls):
     ball_colors.append(get_ball_color(i, num_balls))
 
+calculate_centers_of_mass(frames)
+
 plt.style.use('dark_background')
 fig, ax = plt.subplots()
 
 # fig.patch.set_facecolor('#151515')
-fig.canvas.mpl_connect('key_press_event', on_press)
 
 ax.set_xlim(-1, BOARD_SIZE[0] + 1)
 ax.set_ylim(-1, BOARD_SIZE[1] + 1)
@@ -294,7 +378,7 @@ board = get_board(board_vertices, size=BOARD_SIZE)
 ax.add_patch(board)
 
 # Create an axis for the image button in center of the figure (bottom)
-button_ax = fig.add_axes([0.48, 0.02, 0.075, 0.075], frameon=False)
+button_ax = fig.add_axes([0.475, 0.02, 0.075, 0.075], frameon=False)
 pause_button = Button(button_ax, '', color='black', hovercolor='gray')  # empty label
 
 # Load the image
@@ -316,9 +400,12 @@ for i in range(num_balls):
 
 interval = 1000 / 60 / ANIMATION_SPEED
 number_of_frames = len(frames) * SUB_FRAMES
-ani = animation.FuncAnimation(fig, animate, frames=number_of_frames, interval=interval, blit=False)
-ani.event_source.start()
+#ani = animation.FuncAnimation(fig, animate, frames=number_of_frames, interval=interval, blit=False)
+#ani.event_source.start()
+start_animation(fig, animate, number_of_frames, interval, blit=False)
 
+fig.canvas.mpl_connect('key_press_event', on_press)
+fig.canvas.mpl_connect('key_release_event', on_release)
 fig.canvas.mpl_connect('button_press_event', on_mouse_press)
 fig.canvas.mpl_connect('button_release_event', on_mouse_release)
 fig.canvas.mpl_connect('motion_notify_event', on_mouse_drag)

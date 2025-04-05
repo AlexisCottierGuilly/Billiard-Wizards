@@ -60,7 +60,7 @@ def center_of_mass_graph(data_x=None, data_y=None):
     xLimits = [0, len(time)]
 
     # Setup steps that are divisors of the limits
-    yStep = 0.005
+    yStep = 0.005 if maxValue - minValue < 0.15 else 0.025
     xStep = 100
 
     # make two graphs (or 1 if one of them is None)

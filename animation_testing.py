@@ -9,7 +9,6 @@ import matplotlib.font_manager as fm
 
 from matplotlib.widgets import Button
 
-import networkx as nx
 
 fe = fm.FontEntry(
     fname='Spinnaker-Regular.ttf',
@@ -19,7 +18,7 @@ mpl.rcParams['font.family'] = fe.name
 
 BOARD_SIZE = (100, 100)
 
-SUB_FRAMES = 6
+SUB_FRAMES = 1
 ANIMATION_SPEED = 1
 PAUSE_BUTTON_PATH = "icons/pause.png"
 PLAY_BUTTON_PATH = "icons/play.png"

@@ -11,7 +11,12 @@ class PolygonCreator:
         self.fullscreen = True
         info = pygame.display.Info()
         self.SCREEN_WIDTH, self.SCREEN_HEIGHT = info.current_w, info.current_h
-        self.PANEL_WIDTH, self.POINT_HITBOX_SIZE = 200, 50
+        self.PANEL_WIDTH = 200
+        
+        # Different hitbox sizes for different modes
+        self.CONNECT_HITBOX_SIZE = 50  # Large hitbox for connect mode
+        self.ADD_HITBOX_SIZE = 15      # Smaller hitbox for add mode
+        
         self.CANVAS_WIDTH, self.CANVAS_HEIGHT = self.SCREEN_WIDTH - self.PANEL_WIDTH, self.SCREEN_HEIGHT
 
         self.BLACK, self.WHITE, self.GRAY, self.LIGHT_GRAY = (0, 0, 0), (255, 255, 255), (80, 80, 80), (120, 120, 120)
@@ -25,6 +30,8 @@ class PolygonCreator:
         self.manager = pygame_gui.UIManager((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         self.points, self.lines, self.polygons, self.polygon_colors = [], [], [], []
         self.current_point = self.hovered_point = self.dragging_point = None
+        self.last_added_point = None  # Track the last point added in add mode
+        self.first_sequence_point = None  # Track the first point in a connected sequence
         self.add_point_mode, self.connect_point_mode = True, False
         self.grid_size, self.show_grid = 20, True
         self.font_small, self.font_medium, self.font_large = [pygame.font.SysFont('Arial', s, bold=(s == 24)) for s in
@@ -70,10 +77,24 @@ class PolygonCreator:
 
         mode_text = "Mode: Add Points" if self.add_point_mode else "Mode: Connect Points"
         self.screen.blit(self.font_medium.render(mode_text, True, self.BLACK), (self.CANVAS_WIDTH + 10, 380))
+        
+        # Add hint about Shift key functionality and right-click
+        if self.add_point_mode:
+            hint1 = "Hold Shift for isolated points"
+            hint2 = "Click first point to close polygon"
+            hint3 = "Right-click to delete a point"
+            self.screen.blit(self.font_small.render(hint1, True, self.BLACK), (self.CANVAS_WIDTH + 10, 405))
+            self.screen.blit(self.font_small.render(hint2, True, self.BLACK), (self.CANVAS_WIDTH + 10, 425))
+            self.screen.blit(self.font_small.render(hint3, True, self.BLACK), (self.CANVAS_WIDTH + 10, 445))
+        else:
+            hint = "Right-click to delete a point"
+            self.screen.blit(self.font_small.render(hint, True, self.BLACK), (self.CANVAS_WIDTH + 10, 405))
 
         if self.export_results:
+            # Update y-position based on other hints
+            y_offset = 465 if self.add_point_mode else 425
             self.screen.blit(self.font_small.render("Exported Coordinates:", True, self.BLACK),
-                             (self.CANVAS_WIDTH + 10, 420))
+                             (self.CANVAS_WIDTH + 10, y_offset))
             display_text = ' '.join(map(str, self.export_results[:24])) + (
                 " ..." if len(self.export_results) > 24 else "")
             wrapped = [];
@@ -86,10 +107,10 @@ class PolygonCreator:
                     wrapped.append(line); line = word + " "
             if line: wrapped.append(line)
             for i, line in enumerate(wrapped[:self.SCREEN_HEIGHT // 20 - 23]):
-                self.screen.blit(self.font_small.render(line, True, self.BLACK), (self.CANVAS_WIDTH + 10, 450 + i * 20))
+                self.screen.blit(self.font_small.render(line, True, self.BLACK), (self.CANVAS_WIDTH + 10, y_offset + i * 20))
             if len(wrapped) > self.SCREEN_HEIGHT // 20 - 23:
                 self.screen.blit(self.font_small.render("...", True, self.BLACK),
-                                 (self.CANVAS_WIDTH + 10, 450 + (self.SCREEN_HEIGHT // 20 - 23) * 20))
+                                 (self.CANVAS_WIDTH + 10, y_offset + (self.SCREEN_HEIGHT // 20 - 23) * 20))
 
         status_rect = pygame.Rect(self.CANVAS_WIDTH + 5, self.SCREEN_HEIGHT - 100, self.PANEL_WIDTH - 10, 30)
         pygame.draw.rect(self.screen, (200, 200, 200), status_rect)
@@ -150,19 +171,61 @@ class PolygonCreator:
                 (math.sin(self.animation_time + pid * 0.5) * 0.5 + 0.5) * 2)) if pid is not None else (self.CYAN, 2)
             pygame.draw.line(self.screen, color, p1, p2, width)
         for i, p in enumerate(self.points):
+            # Add special indicator for the first point in a sequence
+            if i == self.first_sequence_point:
+                # Draw an outer ring to highlight first point in sequence
+                pygame.draw.circle(self.screen, self.GREEN, p, 10, 2)
+            
             c, r = (self.YELLOW, 8) if i == self.current_point else (
             self.HOVER_COLOR, 7) if i == self.hovered_point else (self.WHITE, 6)
             pygame.draw.circle(self.screen, c, p, r)
             self.screen.blit(self.font_small.render(str(i + 1), True, self.WHITE), (p[0] + 8, p[1] - 8))
 
     def get_point_at_position(self, pos):
+        # Use the appropriate hitbox size based on the current mode
+        hitbox_size = self.CONNECT_HITBOX_SIZE if self.connect_point_mode else self.ADD_HITBOX_SIZE
+        
         return next((i for i, p in enumerate(self.points) if
-                     ((p[0] - pos[0]) ** 2 + (p[1] - pos[1]) ** 2) ** 0.5 < self.POINT_HITBOX_SIZE), None)
+                    ((p[0] - pos[0]) ** 2 + (p[1] - pos[1]) ** 2) ** 0.5 < hitbox_size), None)
 
-    def add_point(self, pos):
-        if (p := self.get_point_at_position(pos)) is not None: self.dragging_point = p; return
-        self.points.append(pos);
-        self.status_message, self.status_timer = f"Point added at {pos}", 90
+    def add_point(self, pos, shift_pressed=False):
+        # If we're clicking on an existing point, start dragging it or close polygon
+        if (p := self.get_point_at_position(pos)) is not None:
+            # Check if this is the first point in the sequence - close the polygon
+            if self.last_added_point is not None and p == self.first_sequence_point and p != self.last_added_point:
+                # Close the polygon by connecting the last point to the first point
+                self.lines.append((self.last_added_point, p))
+                self.status_message = f"Closed polygon: connected point {self.last_added_point+1} to point {p+1}"
+                self.find_polygons()
+                
+                # Reset sequence trackers to start a new polygon
+                self.last_added_point = None
+                self.first_sequence_point = None
+                self.status_timer = 90
+                return
+            
+            # Not closing a polygon, so start dragging the point
+            self.dragging_point = p
+            return
+        
+        # Add the new point
+        point_idx = len(self.points)
+        self.points.append(pos)
+        
+        # If we have a previous point and not holding shift, connect them
+        if self.last_added_point is not None and not shift_pressed:
+            self.lines.append((self.last_added_point, point_idx))
+            self.status_message = f"Added point {point_idx+1} and connected to {self.last_added_point+1}"
+            # Update polygons since we added a line
+            self.find_polygons()
+        else:
+            self.status_message = f"Added isolated point {point_idx+1}"
+            # This is a new sequence, so set the first point of the sequence
+            self.first_sequence_point = point_idx
+        
+        # Update the last added point
+        self.last_added_point = point_idx
+        self.status_timer = 90
 
     def select_point(self, pos):
         if not self.points: self.status_message, self.status_timer = "No points to select.", 90; return
@@ -183,7 +246,9 @@ class PolygonCreator:
         self.hovered_point = self.get_point_at_position(pos)
 
     def clear_all(self):
-        self.points, self.lines, self.polygons, self.polygon_colors, self.current_point, self.hovered_point, self.dragging_point = [], [], [], [], None, None, None
+        self.points, self.lines, self.polygons, self.polygon_colors = [], [], [], []
+        self.current_point, self.hovered_point, self.dragging_point = None, None, None
+        self.last_added_point, self.first_sequence_point = None, None
         self.status_message, self.status_timer = "All cleared", 90
 
     def are_polygons_valid(self):
@@ -232,6 +297,65 @@ class PolygonCreator:
                     1] <= my + mh - 10: return
             self.clock.tick(30)
 
+    def delete_point(self, point_idx):
+        if point_idx is None or point_idx >= len(self.points):
+            return
+        
+        # Remember if this was the first point in a sequence
+        was_first_point = (point_idx == self.first_sequence_point)
+        
+        # Remove the point
+        deleted_point = self.points.pop(point_idx)
+        
+        # Find all lines connected to this point
+        lines_to_remove = []
+        for i, (p1, p2) in enumerate(self.lines):
+            if p1 == point_idx or p2 == point_idx:
+                lines_to_remove.append(i)
+        
+        # Remove lines in reverse order to not mess up indices
+        for i in sorted(lines_to_remove, reverse=True):
+            self.lines.pop(i)
+        
+        # Update indices in remaining lines
+        updated_lines = []
+        for p1, p2 in self.lines:
+            new_p1 = p1 if p1 < point_idx else p1 - 1
+            new_p2 = p2 if p2 < point_idx else p2 - 1
+            updated_lines.append((new_p1, new_p2))
+        self.lines = updated_lines
+        
+        # Update trackers
+        if self.current_point is not None:
+            if self.current_point == point_idx:
+                self.current_point = None
+            elif self.current_point > point_idx:
+                self.current_point -= 1
+        
+        if self.last_added_point is not None:
+            if self.last_added_point == point_idx:
+                self.last_added_point = None
+            elif self.last_added_point > point_idx:
+                self.last_added_point -= 1
+        
+        if self.first_sequence_point is not None:
+            if was_first_point:
+                self.first_sequence_point = None
+            elif self.first_sequence_point > point_idx:
+                self.first_sequence_point -= 1
+        
+        if self.dragging_point is not None:
+            if self.dragging_point == point_idx:
+                self.dragging_point = None
+            elif self.dragging_point > point_idx:
+                self.dragging_point -= 1
+        
+        # Update polygons
+        self.find_polygons()
+        
+        self.status_message = f"Deleted point at {deleted_point}"
+        self.status_timer = 90
+
     def run(self):
         while self.running:
             time_delta = self.clock.tick(30) / 1000.0
@@ -241,8 +365,18 @@ class PolygonCreator:
                 self.manager.process_events(e)
                 if e.type in (pygame.QUIT, pygame.KEYDOWN) and (e.type == pygame.QUIT or e.key == pygame.K_ESCAPE):
                     self.running = False
-                elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and pos[0] < self.CANVAS_WIDTH:
-                    (self.add_point if self.add_point_mode else self.select_point)(pos)
+                elif e.type == pygame.MOUSEBUTTONDOWN and pos[0] < self.CANVAS_WIDTH:
+                    if e.button == 1:  # Left button
+                        # Check if shift is pressed when adding points
+                        shift_pressed = pygame.key.get_mods() & pygame.KMOD_SHIFT
+                        if self.add_point_mode:
+                            self.add_point(pos, shift_pressed)
+                        else:
+                            self.select_point(pos)
+                    elif e.button == 3:  # Right button - delete point
+                        point_idx = self.get_point_at_position(pos)
+                        if point_idx is not None:
+                            self.delete_point(point_idx)
                 elif e.type == pygame.MOUSEBUTTONUP and e.button == 1 and self.dragging_point is not None:
                     self.status_message, self.status_timer, self.dragging_point = f"Point {self.dragging_point + 1} moved", 90, None;
                     self.find_polygons()

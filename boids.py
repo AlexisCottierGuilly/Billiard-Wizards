@@ -30,17 +30,15 @@ class Fish:
         ax.add_patch(self.patch)
     
     def update(self, fishes, sharks, dt=1.0):
-        # Paramètres de perception et distribution gaussienne
         perception_radius = 0.5
-        sigma = perception_radius / 10.0  # sigma = 0.05
-        max_turn = np.pi / 12  # Limite de 15° par frame
+        sigma = perception_radius / 35.0  # sigma = 0.05
+        max_turn = np.pi / 12  # 15° par frame
         
         alignment = np.zeros(2)
         cohesion = np.zeros(2)
         separation = np.zeros(2)
         total_weight = 0
         
-        # Influence des autres poissons
         for other in fishes:
             if other is self:
                 continue
@@ -60,7 +58,7 @@ class Fish:
         else:
             acceleration = np.zeros(2)
         
-        # Influence des requins : une peur viscérale qui pousse à fuir 🦈😱
+        # Influence des requins : fuite viscérale
         for shark in sharks:
             fear_radius = 0.5
             vec_to_shark = self.position - shark.position
@@ -70,7 +68,6 @@ class Fish:
                 repulsion = (vec_to_shark / (distance_to_shark + 1e-5)) * 0.15 * fear_strength
                 acceleration += repulsion
         
-        # Calcul de la nouvelle vélocité avec limitation du virage
         v_old = self.velocity.copy()
         v_new = self.velocity + acceleration
         
@@ -101,9 +98,9 @@ class Fish:
         transformed_verts = (verts @ R.T) + self.position
         self.patch.set_path(Path(transformed_verts, self.base_path.codes))
 
-# --- Classe Shark, les prédateurs implacables ---
+# --- Classe Shark, les prédateurs implacables (qui peuvent eux-mêmes avoir peur !) ---
 class Shark:
-    def __init__(self, ax, position, scale=0.5, color='dimgray'):
+    def __init__(self, ax, position, scale=0.225, color='lightslategrey'):
         self.ax = ax
         self.position = np.array(position, dtype=float)
         self.scale = scale
@@ -113,31 +110,61 @@ class Shark:
         ax.add_patch(self.patch)
     
     def get_shark_path(self, scale=1.0):
-        # Forme stylisée d'un requin (triangle allongé)
+        # Forme stylisée et élégante pour le requin
         verts = [
-            (0.2, 0),              # Pointe avant
-            (-0.2, 0.12),          # Haut du corps
-            (-0.2, -0.12),         # Bas du corps
-            (0.2, 0)               # Retour à la pointe
+            (0.15, 0),    # Pointe avant
+            (0, 0.08),    # Haut du corps
+            (-0.15, 0),   # Corps arrière
+            (0, -0.08),   # Bas du corps
+            (0.15, 0)     # Retour à la pointe
         ]
         verts = np.array(verts) * scale
-        codes = [Path.MOVETO, Path.LINETO, Path.LINETO, Path.CLOSEPOLY]
+        codes = [Path.MOVETO, Path.LINETO, Path.LINETO, Path.LINETO, Path.CLOSEPOLY]
         return Path(verts, codes)
     
     def update(self, fishes, dt=1.0):
-        # Le requin chasse le poisson le plus proche
-        if fishes:
-            distances = [np.linalg.norm(fish.position - self.position) for fish in fishes]
-            target = fishes[np.argmin(distances)]
-            direction = target.position - self.position
+        # --- Calcul de la densité locale de poissons ---
+        density_radius = 0.5
+        density_sigma = density_radius / 3.0  # pour une pondération douce
+        density = 0.0
+        weighted_sum = np.zeros(2)
+        for fish in fishes:
+            distance = np.linalg.norm(fish.position - self.position)
+            if distance < density_radius:
+                weight = np.exp(- (distance ** 2) / (2 * density_sigma ** 2))
+                density += weight
+                weighted_sum += fish.position * weight
+        
+        # Seuil de densité pour que le requin prenne peur
+        density_threshold = 2.0
+        
+        if density > density_threshold:
+            # Calcul du centre de masse des poissons dans la zone
+            center_of_mass = weighted_sum / density
+            # Le requin fuit en s'éloignant du centre de masse
+            direction = self.position - center_of_mass
             norm = np.linalg.norm(direction)
             if norm > 0:
-                direction = direction / norm
+                direction /= norm
             else:
                 direction = np.array([1, 0])
             max_speed = 0.007
             self.velocity = direction * max_speed
-            self.position = (self.position + self.velocity * dt) % 1.0
+        else:
+            # Comportement normal : chasse le poisson le plus proche
+            if fishes:
+                distances = [np.linalg.norm(fish.position - self.position) for fish in fishes]
+                target = fishes[np.argmin(distances)]
+                direction = target.position - self.position
+                norm = np.linalg.norm(direction)
+                if norm > 0:
+                    direction /= norm
+                else:
+                    direction = np.array([1, 0])
+                max_speed = 0.007
+                self.velocity = direction * max_speed
+        
+        self.position = (self.position + self.velocity * dt) % 1.0
     
     def draw(self):
         angle = np.arctan2(self.velocity[1], self.velocity[0])
@@ -147,14 +174,17 @@ class Shark:
         transformed_verts = (verts @ R.T) + self.position
         self.patch.set_path(Path(transformed_verts, self.base_path.codes))
 
-# --- Configuration de la figure et du fond océanique sombre ---
-fig, ax = plt.subplots(figsize=(8, 8))
+# --- Configuration de la figure en plein écran et du fond océanique sombre ---
+fig, ax = plt.subplots()
 ax.set_xlim(0, 1)
 ax.set_ylim(0, 1)
 ax.set_aspect('equal')
 fig.patch.set_facecolor('midnightblue')
 ax.set_facecolor('midnightblue')
 plt.axis('off')
+
+# Passage en mode plein écran
+mng = plt.get_current_fig_manager()
 
 # Palette de couleurs sobres pour les poissons
 colors = ['steelblue', 'cadetblue', 'slategray', 'mediumslateblue', 'mediumaquamarine']
@@ -167,39 +197,34 @@ for _ in range(num_fishes):
     angle = np.random.rand() * 2 * np.pi
     vel = np.array([np.cos(angle), np.sin(angle)]) * 0.002
     color = random.choice(colors)
-    fishes.append(Fish(ax, pos, vel, scale=0.25, color=color))
+    fishes.append(Fish(ax, pos, vel, scale=0.3, color=color))
 
-# Création de plusieurs requins affamés
-num_sharks = 1
+# Création de plusieurs requins
+num_sharks = 2
 sharks = []
 for _ in range(num_sharks):
     pos = np.random.rand(2)
-    sharks.append(Shark(ax, pos, scale=0.2, color='dimgray'))
+    sharks.append(Shark(ax, pos, scale=0.225, color='lightslategrey'))
 
-# --- Animation dynamique entre chasseurs et chassés ---
+# --- Animation dynamique entre chasseurs et chassés (et requins parfois effrayés !) ---
 def animate(frame):
-    # Mettre à jour et dessiner les requins qui pourchassent
+    # Mise à jour et dessin des requins
     for shark in sharks:
         shark.update(fishes, dt=1.0)
         shark.draw()
     
-    # Mettre à jour et dessiner les poissons qui fuient
+    # Mise à jour et dessin des poissons
     for fish in fishes:
         fish.update(fishes, sharks, dt=1.0)
         fish.draw()
     
-    # Les requins attrapent les poissons s'ils sont trop proches
+    # Les requins capturent les poissons s'ils se rapprochent trop
     capture_radius = 0.03
     remaining_fishes = []
     for fish in fishes:
-        captured = False
-        for shark in sharks:
-            if np.linalg.norm(fish.position - shark.position) < capture_radius:
-                captured = True
-                break
+        captured = any(np.linalg.norm(fish.position - shark.position) < capture_radius for shark in sharks)
         if not captured:
             remaining_fishes.append(fish)
-    # Mise à jour de la liste des poissons (si un poisson est capturé, il disparaît)
     fishes[:] = remaining_fishes
     
     return [fish.patch for fish in fishes] + [shark.patch for shark in sharks]

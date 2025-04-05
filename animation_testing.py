@@ -9,7 +9,6 @@ import matplotlib.font_manager as fm
 
 from matplotlib.widgets import Button
 
-import networkx as nx
 
 fe = fm.FontEntry(
     fname='Spinnaker-Regular.ttf',
@@ -20,7 +19,7 @@ mpl.rcParams['font.family'] = fe.name
 BOARD_SIZE = (100, 100)
 
 SUB_FRAMES = 1
-ANIMATION_SPEED = 1
+animation_speed = 1
 PAUSE_BUTTON_PATH = "icons/pause.png"
 PLAY_BUTTON_PATH = "icons/play.png"
 
@@ -122,11 +121,17 @@ def create_trail_items(ball, ax):
     arrow_width = r / 2
     arrow = patches.Arrow(0, 0, arrow_length, 0, width=arrow_width, color=color, alpha=0)
     ax.add_patch(arrow)
-    shapes = [arrow]
+
+    # Create a path to trace the trail of the ball
+    trail_path = mpl.path.Path([(ball.x, ball.y)], closed=False)
+    patch = patches.PathPatch(trail_path, edgecolor='orange', facecolor='none', lw=2, alpha=0.15)
+    ax.add_patch(patch)
+
+    shapes = [arrow, patch]
     return shapes
 
 
-def update_trail_items(items, x, y, vx, vy, r, color):
+def update_trail_items(items, x, y, vx, vy, r, color, first_update=False):
     x = x * BOARD_SIZE[0]
     y = y * BOARD_SIZE[1]
 
@@ -141,6 +146,18 @@ def update_trail_items(items, x, y, vx, vy, r, color):
             item.set_alpha(0.5)
             item.set_data(x, y, (end[0] - x), (end[1] - y), width=line_width*2)
             item.set_color(color)
+        elif isinstance(item, patches.PathPatch):
+            # add a new vertex to the path (if it is not already at the end)
+            path = item.get_path()
+            vertices = path.vertices
+            if len(vertices) > 0 and (vertices[-1][0] == x and vertices[-1][1] == y):
+                vertices[-1] = (x, y)
+            else:
+                vertices = np.vstack((vertices, (x, y)))
+            path.vertices = vertices
+            if first_update:
+                path.vertices = path.vertices[1:]
+            item.set_path(path)
 
 
 def get_board_elements(board_vertices, size=(100, 100)):
@@ -210,7 +227,7 @@ def get_polygon_with_vertex(vertex, remaining_vertices):
     return polygon, new_remaining_vertices
 
 
-def update(frame1, frame2, percentage):
+def update(frame1, frame2, percentage, first_update=False):
     for i, ball in enumerate(balls):
         trail_items = ball.trail_items
         x1, y1, vx1, vy1, r1 = frame1[i]
@@ -239,7 +256,7 @@ def update(frame1, frame2, percentage):
         else:
             ball.unselect()
 
-        update_trail_items(trail_items, x, y, vx, vy, r, color)
+        update_trail_items(trail_items, x, y, vx, vy, r, color, first_update)
 
     return ball_patches
 
@@ -255,6 +272,8 @@ def calculate_centers_of_mass(frames):
             y_sum += ball[1]
         centers_of_mass.append((x_sum / len(frame), y_sum / len(frame)))
 
+    save_center_of_mass()
+
 
 def animate(i):
     global need_to_pause, need_to_play, centers_of_mass
@@ -264,8 +283,15 @@ def animate(i):
 
     if frame2_index < frame1_index:
         percentage = 1
+    
+    if i == 0:
+        for ball in balls:
+            path_trail = ball.trail_items[1]
+            path = path_trail.get_path()
+            path.vertices = np.array([[ball.x * BOARD_SIZE[0], ball.y * BOARD_SIZE[1]]])
+            path_trail.set_path(path)
 
-    update(frames[frame1_index], frames[frame2_index], percentage)
+    update(frames[frame1_index], frames[frame2_index], percentage, i==0)
 
     if need_to_pause:
         ani.event_source.stop()
@@ -301,7 +327,7 @@ def play_request():
 
 
 def on_press(event):
-    global is_paused
+    global is_paused, animation_speed
     if event.key == ' ':  # la barre d'espace pour la pause/reprise
         toggle_animation(event)
     if event.key == 'r':
@@ -309,6 +335,14 @@ def on_press(event):
     if event.key == 'shift':
         global shift_pressed
         shift_pressed = True
+    if event.key == 'p':
+        save_center_of_mass()
+    if event.key == '=':
+        animation_speed *= 2
+        set_animation_speed(animation_speed)
+    if event.key == '-':
+        animation_speed /= 2
+        set_animation_speed(animation_speed)
 
 def on_release(event):
     global shift_pressed
@@ -380,9 +414,16 @@ def toggle_animation(event):
     is_paused = not is_paused
 
 
+def set_animation_speed(speed=1):
+    global ani
+    ani.event_source.stop()
+    ani.event_source.interval = 1000 / 60 / speed
+    ani.event_source.start()
+
+
 def start_animation(figure, anim_function, nb_frames, interval, blit=False):
     global ani
-    ani = animation.FuncAnimation(figure, anim_function, frames=nb_frames, interval=interval, blit=blit)
+    ani = animation.FuncAnimation(figure, anim_function, frames=nb_frames, interval=interval, blit=blit)  
     ani.event_source.start()
 
 
@@ -390,6 +431,17 @@ def reset_animation():
     global ani
     ani.event_source.stop()
     start_animation(fig, animate, number_of_frames, interval, blit=False)
+
+
+def save_center_of_mass():
+    with open('center_of_mass_data.txt', 'w') as file:
+        x_line = ""
+        y_line = ""
+        for i, center in enumerate(centers_of_mass):
+            x_line += f"{center[0]} {i} "
+            y_line += f"{center[1]} {i} "
+        file.write(x_line + "\n")
+        file.write(y_line + "\n")
 
 
 balls = []
@@ -435,18 +487,19 @@ button_ax.axis('off')  # Hide ticks and axes for a clean look
 pause_button.on_clicked(toggle_animation)
 
 ball_patches = []
-NB_OF_TRAIL_ELEMENTS = 1
+NB_OF_TRAIL_ELEMENTS = 2
 for i in range(num_balls):
     ball = Ball((0, 0), 1, color=ball_colors[i])
     ax.add_patch(ball)
     trail = create_trail_items(ball, ax)
     ball.trail_items = trail
+    ball.set_zorder(10)
     balls.append(ball)
     ball_patches.append(ball)
     for t in trail:
         ball_patches.append(t)
 
-interval = 1000 / 60 / ANIMATION_SPEED
+interval = 1000 / 60 / animation_speed
 number_of_frames = len(frames) * SUB_FRAMES
 #ani = animation.FuncAnimation(fig, animate, frames=number_of_frames, interval=interval, blit=False)
 #ani.event_source.start()
@@ -458,6 +511,13 @@ fig.canvas.mpl_connect('button_press_event', on_mouse_press)
 fig.canvas.mpl_connect('button_release_event', on_mouse_release)
 fig.canvas.mpl_connect('motion_notify_event', on_mouse_drag)
 
-plt.show()
+def convert_to_array(s_template):
+    numbers = [int(i) for i in s_template.split()]
+    grouped = [list(numbers[i:i + 4]) for i in range(0, len(numbers), 4)]
+    max_value = max(max(group) for group in grouped)
+    normalized = [[x / max_value for x in group] for group in grouped]
+    return normalized
 
-# polygon = np.array([[0.2375, 0.12333333333333334, 0.08916666666666667, 0.3616666666666667], [0.08916666666666667, 0.3616666666666667, 0.405, 0.37166666666666665], [0.405, 0.37166666666666665, 0.37916666666666665, 0.5966666666666667], [0.37916666666666665, 0.5966666666666667, 0.7958333333333333, 0.5783333333333334], [0.7958333333333333, 0.5783333333333334, 0.82, 0.5183333333333333], [0.82, 0.5183333333333333, 0.7675, 0.37916666666666665], [0.7675, 0.37916666666666665, 1.0, 0.185], [1.0, 0.185, 0.8975, 0.11333333333333333], [0.8975, 0.11333333333333333, 0.7233333333333334, 0.11666666666666667], [0.7233333333333334, 0.11666666666666667, 0.5866666666666667, 0.04083333333333333], [0.5866666666666667, 0.04083333333333333, 0.30416666666666664, 0.059166666666666666], [0.30416666666666664, 0.059166666666666666, 0.2375, 0.12333333333333334]])
+#print(convert_to_array("689 141 784 154 784 154 875 192 875 192 949 252 949 252 999 313 999 313 1022 391 1022 391 1031 467 1031 467 1018 553 1018 553 986 626 986 626 936 680 936 680 869 728 869 728 799 757 616 763 536 741 536 741 445 683 445 683 395 605 395 605 371 509 371 509 376 408 376 408 399 328 399 328 432 267 432 267 495 202 495 202 575 158 575 158 689 141 799 757 716 771 716 771 616 763"))
+
+plt.show()
